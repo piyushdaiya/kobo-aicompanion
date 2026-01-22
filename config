@@ -1,0 +1,17 @@
+# --- GEMINI AI INTEGRATION ---
+
+# 1. Simple Explanations
+menu_item : selection : 🧠 Explain : cmd_spawn : quiet : /bin/sh /mnt/onboard/.adds/scripts/gemini.sh "explain" "{1||$}"
+chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/result.html
+
+# 2. Character Lookup
+menu_item : selection : 👤 Who is this? : cmd_spawn : quiet : /bin/sh /mnt/onboard/.adds/scripts/gemini.sh "lookup" "{1||$}"
+chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/result.html
+
+# 3. Visualize (Text to Image)
+menu_item : selection : 🖼️ Visualize : cmd_spawn : quiet : /bin/sh /mnt/onboard/.adds/scripts/gemini.sh "visualize" "{1||$}"
+chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/result.html
+
+# 4. Diagnostics
+menu_item : selection : 🛠️ Diagnostics : cmd_spawn : quiet : /bin/sh /mnt/onboard/.adds/scripts/diagnose.sh
+chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/result.html
