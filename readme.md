@@ -25,8 +25,8 @@ When installed, your Kobo file system should look like this:
 │       └── result.html       <-- (Generated automatically; you don't need to create this)
 │
 └── (Your Books Folder)
-```
 
+```
 
 ## 🛠️ Prerequisites
 
@@ -60,9 +60,7 @@ The built-in Kobo network tools are too weak for secure API calls. We use a stan
 
 Create a file named `gemini.sh` in `.adds/scripts/`. Paste the code below. **IMPORTANT:** Replace `PASTE_YOUR_API_KEY_HERE` with your actual key.
 
-**Bash**
-
-```
+```bash
 #!/bin/sh
 # Location: /mnt/onboard/.adds/scripts/gemini.sh
 
@@ -100,11 +98,11 @@ echo "<html><head><meta http-equiv='refresh' content='2'>$CSS</head><body><h2>�
     if [ "$ACTION" = "explain" ]; then
         TITLE="Explanation"
         PROMPT="Provide a simple, 2-sentence explanation for the term: $CLEAN_TEXT"
-      
+        
     elif [ "$ACTION" = "lookup" ]; then
         TITLE="Who is this?"
         PROMPT="Identify this character or person and provide a brief 3-sentence summary of who they are: $CLEAN_TEXT"
-      
+        
     elif [ "$ACTION" = "visualize" ]; then
         TITLE="Visual Description"
         PROMPT="You are a master artist. Do not explain what '$CLEAN_TEXT' is. Instead, describe its physical appearance in vivid, sensory detail (colors, textures, lighting) as if painting a picture. Keep it under 50 words."
@@ -121,7 +119,7 @@ echo "<html><head><meta http-equiv='refresh' content='2'>$CSS</head><body><h2>�
     # --- PROCESS RESULT ---
     if grep -q "\"text\":" "$DEBUG_FILE"; then
         TEXT_RESULT=$(grep -o '"text": "[^"]*' "$DEBUG_FILE" | sed 's/"text": "//' | sed 's/\\n/<br>/g')
-      
+        
         if [ "$ACTION" = "visualize" ]; then
             echo "<html><head>$CSS</head><body><h2>$TITLE</h2><div class='visual-text'>$TEXT_RESULT</div></body></html>" > $OUTPUT_HTML
         else
@@ -135,15 +133,14 @@ echo "<html><head><meta http-equiv='refresh' content='2'>$CSS</head><body><h2>�
 ) &
 
 exit 0
+
 ```
 
 ### Step 4: Configure NickelMenu
 
 Add these lines to `.adds/nm/config`:
 
-**Plaintext**
-
-```
+```text
 # --- GEMINI INTEGRATION ---
 menu_item : selection : 🧠 Explain : cmd_spawn : quiet : /bin/sh /mnt/onboard/.adds/scripts/gemini.sh "explain" "{1||$}"
 chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/result.html
@@ -153,6 +150,7 @@ chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/resul
 
 menu_item : selection : 🖼️ Visualize : cmd_spawn : quiet : /bin/sh /mnt/onboard/.adds/scripts/gemini.sh "visualize" "{1||$}"
 chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/result.html
+
 ```
 
 ---
@@ -172,12 +170,14 @@ chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/resul
 * **"Model not found"**: Google may have updated API names. Check `gemini.sh` and ensure `gemini-2.5-flash` is still the current model name.
 * **Stuck on Loading Screen**: The script might have crashed. Reboot the Kobo to clear the `/tmp` RAM folder.
 
-
 ---
+
 ## 🔧 Appendix: Diagnostic Tool
+
 If the scripts ever stop working, use this tool to ask Google specifically "What models can I use?" This helps verify if your API Key is active or if model names have changed.
 
 ### 1. Create `diagnose.sh`
+
 Create a file at `.adds/scripts/diagnose.sh` and paste this code:
 
 ```bash
@@ -210,12 +210,12 @@ echo "<html><head>$CSS</head><body><h2>⏳ Querying Google...</h2><p>Checking AP
 if grep -q "\"name\":" "$DEBUG_FILE"; then
     # Filter for 'gemini' or 'imagen' models
     MODELS_FOUND=$(grep -o '"name": "models/[^"]*' "$DEBUG_FILE" | sed 's/"name": "models\///')
-  
+    
     HTML_LIST=""
     for m in $MODELS_FOUND; do
         HTML_LIST="$HTML_LIST <div class='model'>$m</div>"
     done
-  
+    
     echo "<html><head>$CSS</head><body><h2>✅ Success</h2><p>Your Key is active. Available models:</p>$HTML_LIST</body></html>" > $OUTPUT_HTML
 else
     # FAILURE
@@ -223,14 +223,19 @@ else
     if [ -z "$ERROR_MSG" ]; then ERROR_MSG="Connection failed. Check Wi-Fi."; fi
     echo "<html><head>$CSS</head><body><h2>⚠️ Connection Failed</h2><p>Could not reach Google.</p><pre>$ERROR_MSG</pre></body></html>" > $OUTPUT_HTML
 fi
----
+
+```
+
 ### 2. Add to NickelMenu
 
 Add this line to your `.adds/nm/config` file to create a "Tools" button:
 
-**Plaintext**
-
-```
+```text
 menu_item : selection : 🛠️ Diagnostics : cmd_spawn : quiet : /bin/sh /mnt/onboard/.adds/scripts/diagnose.sh
 chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/result.html
+
+```
+
+```
+
 ```
