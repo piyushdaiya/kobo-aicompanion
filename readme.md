@@ -1,8 +1,11 @@
-# Kobo AI Companion (Gemini 2.5)
+# Kobo AI Companion (Hybrid Edition)
 
 **Restoration Kit & Installation Guide**
 
-This project enhances a Kobo e-reader with on-demand AI intelligence. It allows you to highlight text while reading and instantly get definitions, character summaries, or vivid scene visualizations without leaving the page.
+This project turns your Kobo e-reader into a powerful AI assistant using a "Hybrid" approach to get the best of both worlds:
+
+* **Text (Definitions/Summaries):** Uses **Google Gemini 2.5** (Fast, smart, free).
+* **Images (Visualization):** Uses **Cloudflare Workers AI** (Stable Diffusion) to generate scenes.
 
 ## 📂 Project Structure
 
@@ -12,17 +15,18 @@ When installed, your Kobo file system should look like this:
 (KOBO ROOT DIRECTORY)
 │
 ├── .kobo/
-│   └── KoboRoot.tgz          <-- (Only needed once to install NickelMenu, then it disappears)
+│   └── KoboRoot.tgz          <-- (Only needed once to install NickelMenu)
 │
 ├── .adds/
 │   ├── nm/
-│   │   └── config            <-- (The text file where you added the menu_item lines)
+│   │   └── config            <-- (Menu configuration file)
 │   │
 │   └── scripts/
 │       ├── curl              <-- (The binary file you downloaded, NO file extension)
-│       ├── gemini.sh         <-- (The main script, code provided below)
-│       ├── diagnose.sh       <-- (The fix-it tool, code provided below)
-│       └── result.html       <-- (Generated automatically; you don't need to create this)
+│       ├── gemini.sh         <-- (The main logic script)
+│       ├── diagnose.sh       <-- (Diagnostic tool)
+│       ├── result.html       <-- (Generated automatically)
+│       └── vis.png           <-- (Generated automatically)
 │
 └── (Your Books Folder)
 
@@ -33,9 +37,7 @@ When installed, your Kobo file system should look like this:
 1. **Kobo E-Reader** (Any model running recent firmware).
 2. **NickelMenu** installed (v0.6.0+).
 3. **Google Gemini API Key** (Free tier from [aistudio.google.com](https://aistudio.google.com/)).
-4. **Static Curl Binary** (downloaded from `static-curl` repo).
-
----
+4. **Cloudflare Account** (Free tier from [cloudflare.com](https://www.cloudflare.com/)).
 
 ## 🚀 Installation Instructions
 
@@ -50,15 +52,106 @@ If not already installed:
 
 ### Step 2: Install Curl
 
-The built-in Kobo network tools are too weak for secure API calls. We use a standalone `curl` binary.
+The built-in Kobo network tools are too weak for secure API calls.
 
 1. Download `curl-armhf-linux-musl` from [moparisthebest/static-curl](https://github.com/moparisthebest/static-curl/releases).
 2. Rename the file to `curl` (no extension).
 3. Copy it to: `.adds/scripts/curl`
 
-### Step 3: The Script (`gemini.sh`)
+### Step 3: Setup Cloudflare Worker (For Images)
 
-Create a file named `gemini.sh` in `.adds/scripts/`. Paste the code below. **IMPORTANT:** Replace `PASTE_YOUR_API_KEY_HERE` with your actual key.
+To get image generation working, you need to set up a free "Worker" on Cloudflare.
+
+**📺 Video Reference:**
+For a visual guide on setting up the Cloudflare environment, refer to **[Code With Nomi's Guide](https://www.youtube.com/watch?v=ZSHEL1EUQuE)**.
+
+**📋 Setup Checklist:**
+
+1. **Create Worker:** Go to Cloudflare Dashboard > Compute (Workers) > Create Application > "Hello World" script. Name it something like `kobo-art`.
+2. **Add AI Binding:**
+
+* Go to **Settings > Bindings**.
+* Click **Add**.
+* Choose **Workers AI**.
+* Variable Name: `AI` (Must be uppercase).
+
+3. **Add Secret Key:**
+
+* Go to **Settings > Variables and Secrets**.
+* Add a variable named `API_KEY`.
+* Value: Create your own password (e.g., `MySuperSecretPassword123`). *You will need this later.*
+
+4. **Paste the Code:**
+
+* Click **Edit Code**.
+* Delete the existing code and paste the **Worker Code** below. (This is optimized to accept the specific parameters sent by the Kobo).
+
+**☁️ Cloudflare Worker Code:**
+
+```javascript
+export default {
+  async fetch(request, env) {
+    const API_KEY = env.API_KEY;
+    const url = new URL(request.url);
+    const auth = request.headers.get("Authorization");
+
+    // 🔐 Simple API key check
+    if (auth !== `Bearer ${API_KEY}`) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+
+    // 🚫 Only allow POST requests to /
+    if (request.method !== "POST" || url.pathname !== "/") {
+      return json({ error: "Not allowed" }, 405);
+    }
+
+    try {
+      const { prompt } = await request.json();
+
+      if (!prompt) return json({ error: "Prompt is required" }, 400);
+
+      // Choose model from the following list:
+      // "@cf/blackforestlabs/ux-1-schnell"
+      // "@cf/bytedance/stable-diffusion-xl-lightning"
+      // "@cf/lykon/dreamshaper-8-lcm"
+      // "@cf/runwayml/stable-diffusion-v1-5-img2img"
+      // "@cf/runwayml/stable-diffusion-v1-5-inpainting"
+      // "@cf/stabilityai/stable-diffusion-xl-base-1.0"
+
+      // 🧠 Generate image from prompt
+      const result = await env.AI.run(
+        "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+        { prompt }
+      );
+
+      return new Response(result, {
+        headers: { "Content-Type": "image/jpeg" },
+      });
+    } catch (err) {
+      return json(
+        { error: "Failed to generate image", details: err.message },
+        500
+      );
+    }
+  },
+};
+
+// 📦 Function to return JSON responses
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+```
+
+5. **Deploy:** Click "Deploy". Copy your Worker URL (e.g., `https://kobo-art.yourname.workers.dev`).
+
+### Step 4: The Script (`gemini.sh`)
+
+Create a file named `gemini.sh` in `.adds/scripts/`. Paste the code below.
+**IMPORTANT:** Fill in the Configuration section with your Google Key, Cloudflare URL, and Cloudflare Secret Key.
 
 ```bash
 #!/bin/sh
@@ -66,69 +159,100 @@ Create a file named `gemini.sh` in `.adds/scripts/`. Paste the code below. **IMP
 
 ACTION=$1
 TEXT=$2
-API_KEY="PASTE_YOUR_API_KEY_HERE"
-OUTPUT_HTML="/mnt/onboard/.adds/scripts/result.html"
+SCRIPT_DIR="/mnt/onboard/.adds/scripts"
+OUTPUT_HTML="$SCRIPT_DIR/result.html"
+IMG_FILE="$SCRIPT_DIR/vis.png"
 DEBUG_FILE="/tmp/gemini_debug.txt"
 
-# --- 1. SETUP CURL ---
-CURL_SOURCE="/mnt/onboard/.adds/scripts/curl"
+# ================= CONFIGURATION =================
+GEMINI_API_KEY="PASTE_GOOGLE_API_KEY_HERE"
+CF_WORKER_URL="[https://your-worker-name.your-subdomain.workers.dev](https://your-worker-name.your-subdomain.workers.dev)"
+CF_API_KEY="PASTE_CLOUDFLARE_SECRET_KEY_HERE"
+# =================================================
+
 CURL_BIN="/tmp/curl_kobo"
+[ ! -f "$CURL_BIN" ] && cp "$SCRIPT_DIR/curl" "$CURL_BIN" && chmod +x "$CURL_BIN"
 
-if [ ! -f "$CURL_BIN" ]; then
-    cp "$CURL_SOURCE" "$CURL_BIN"
-    chmod +x "$CURL_BIN"
-fi
-
-# --- 2. CSS STYLING ---
 CSS="<style>
-body { font-family: 'Georgia', serif; font-size: 32px; line-height: 1.4em; background-color: #FFF; color: #000; padding: 30px; margin: 0; }
-h2 { font-family: 'Avenir Next', sans-serif; font-size: 38px; text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
+body { font-family: 'Georgia', serif; font-size: 32px; padding: 20px; margin: 0; }
+h2 { font-family: sans-serif; border-bottom: 2px solid #000; text-align: center; margin-bottom: 10px; }
+/* Force image to fit width, let height adjust naturally */
+img { width: 100%; height: auto; display: block; margin: 10px auto; border: 2px solid #333; }
+.meta { font-size: 14px; color: #666; text-align: center; margin-top: 5px; font-style: italic; }
 .visual-text { font-style: italic; color: #333; border-left: 4px solid #555; padding-left: 20px; margin-top: 20px; font-size: 30px; }
-pre { font-size: 16px; background: #eee; padding: 10px; border: 1px solid #999; white-space: pre-wrap; }
 </style>"
 
-# --- 3. LOADING SCREEN ---
-echo "<html><head><meta http-equiv='refresh' content='2'>$CSS</head><body><h2>⏳ Consulting Gemini...</h2><p style='text-align:center;'>Accessing Gemini 2.5...</p></body></html>" > $OUTPUT_HTML
+RAND=$(date +%s)
 
-# --- 4. BACKGROUND PROCESS ---
+echo "<html><head><meta http-equiv='refresh' content='7'>$CSS</head><body><h2>⏳ Processing</h2><p style='text-align:center;'>Optimizing Image...</p></body></html>" > $OUTPUT_HTML
+
 (
     CLEAN_TEXT=$(echo "$TEXT" | tr -d '\n\r' | sed 's/"/\\"/g')
+    "$CURL_BIN" -k -s -m 2 "[https://www.google.com](https://www.google.com)" > /dev/null
 
-    # --- DEFINE PROMPTS ---
-    if [ "$ACTION" = "explain" ]; then
-        TITLE="Explanation"
-        PROMPT="Provide a simple, 2-sentence explanation for the term: $CLEAN_TEXT"
-        
-    elif [ "$ACTION" = "lookup" ]; then
-        TITLE="Who is this?"
-        PROMPT="Identify this character or person and provide a brief 3-sentence summary of who they are: $CLEAN_TEXT"
-        
-    elif [ "$ACTION" = "visualize" ]; then
-        TITLE="Visual Description"
-        PROMPT="You are a master artist. Do not explain what '$CLEAN_TEXT' is. Instead, describe its physical appearance in vivid, sensory detail (colors, textures, lighting) as if painting a picture. Keep it under 50 words."
-    fi
-
-    # --- MODEL CONFIGURATION (v1beta / Gemini 2.5) ---
-    MODEL="gemini-2.5-flash:generateContent"
-    URL="[https://generativelanguage.googleapis.com/v1beta/models/$MODEL?key=$API_KEY](https://generativelanguage.googleapis.com/v1beta/models/$MODEL?key=$API_KEY)"
-    PAYLOAD="{\"contents\":[{\"parts\":[{\"text\":\"$PROMPT\"}]}]}"
-
-    # --- EXECUTE REQUEST ---
-    "$CURL_BIN" -k -s -m 15 -H 'Content-Type: application/json' -d "$PAYLOAD" "$URL" > "$DEBUG_FILE"
-
-    # --- PROCESS RESULT ---
-    if grep -q "\"text\":" "$DEBUG_FILE"; then
-        TEXT_RESULT=$(grep -o '"text": "[^"]*' "$DEBUG_FILE" | sed 's/"text": "//' | sed 's/\\n/<br>/g')
-        
-        if [ "$ACTION" = "visualize" ]; then
-            echo "<html><head>$CSS</head><body><h2>$TITLE</h2><div class='visual-text'>$TEXT_RESULT</div></body></html>" > $OUTPUT_HTML
+    # --- TEXT FALLBACK FUNCTION ---
+    generate_text() {
+        TYPE=$1
+        if [ "$TYPE" = "fallback" ]; then
+            PROMPT="You are an artist. Describe '$CLEAN_TEXT' in vivid sensory detail. Under 50 words."
+            TITLE="Visual Description"
+        elif [ "$TYPE" = "explain" ]; then
+            PROMPT="Explain: $CLEAN_TEXT"
+            TITLE="Explanation"
         else
-            echo "<html><head>$CSS</head><body><h2>$TITLE</h2><p>$TEXT_RESULT</p></body></html>" > $OUTPUT_HTML
+            PROMPT="Who is: $CLEAN_TEXT"
+            TITLE="Who is this?"
         fi
+      
+        MODEL="gemini-2.5-flash:generateContent"
+        URL="[https://generativelanguage.googleapis.com/v1beta/models/$MODEL?key=$GEMINI_API_KEY](https://generativelanguage.googleapis.com/v1beta/models/$MODEL?key=$GEMINI_API_KEY)"
+        PAYLOAD="{\"contents\":[{\"parts\":[{\"text\":\"$PROMPT\"}]}]}"
+      
+        "$CURL_BIN" -k -s -m 15 -H 'Content-Type: application/json' -d "$PAYLOAD" "$URL" > "$DEBUG_FILE"
+        TXT=$(grep -o '"text": "[^"]*' "$DEBUG_FILE" | sed 's/"text": "//' | sed 's/\\n/<br>/g')
+      
+        if [ "$TYPE" = "fallback" ]; then
+             echo "<html><head>$CSS</head><body><h2>$TITLE</h2><div class='visual-text'>$TXT</div><div class='meta'>Switched to text mode.</div></body></html>" > $OUTPUT_HTML
+        else
+             echo "<html><head>$CSS</head><body><h2>$TITLE</h2><p>$TXT</p></body></html>" > $OUTPUT_HTML
+        fi
+    }
+
+    # --- VISUALIZATION ---
+    if [ "$ACTION" = "visualize" ]; then
+        PROMPT="Simple minimalist line art of $CLEAN_TEXT, black ink on white background, high contrast, no shading, clean lines."
+      
+        # OPTIMIZATION: 384x512 is the "Safe Zone" for Kobo memory.
+        # It's still sharp on a small screen but uses 45% less RAM than 512x682.
+      
+        JSON_DATA="{
+            \"prompt\": \"$PROMPT\",
+            \"width\": 384,
+            \"height\": 512,
+            \"num_inference_steps\": 20,
+            \"guidance_scale\": 7,
+            \"scheduler\": \"DPM++ 2M Karras\"
+        }"
+      
+        "$CURL_BIN" -k -s -m 30 -X POST "$CF_WORKER_URL" \
+            -H "Authorization: Bearer $CF_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_DATA" \
+            -o "$IMG_FILE"
+
+        if [ -s "$IMG_FILE" ]; then
+            FIRST=$(head -c 1 "$IMG_FILE")
+            if [ "$FIRST" = "{" ] || [ "$FIRST" = "<" ]; then
+                generate_text "fallback"
+            else
+                echo "<html><head>$CSS</head><body><h2>Visualization</h2><img src='vis.png?v=$RAND'><div class='meta'>Optimized 384x512</div></body></html>" > $OUTPUT_HTML
+            fi
+        else
+            generate_text "fallback"
+        fi
+      
     else
-        ERROR_MSG=$(cat "$DEBUG_FILE")
-        if [ -z "$ERROR_MSG" ]; then ERROR_MSG="Curl returned empty. Check API Key or Wi-Fi."; fi
-        echo "<html><head>$CSS</head><body><h2>⚠️ Request Failed</h2><p>Could not connect.</p><h3>Debug Log:</h3><pre>$ERROR_MSG</pre></body></html>" > $OUTPUT_HTML
+        generate_text "$ACTION"
     fi
 ) &
 
@@ -136,12 +260,12 @@ exit 0
 
 ```
 
-### Step 4: Configure NickelMenu
+### Step 5: Configure NickelMenu
 
 Add these lines to `.adds/nm/config`:
 
 ```text
-# --- GEMINI INTEGRATION ---
+# --- AI INTEGRATION ---
 menu_item : selection : 🧠 Explain : cmd_spawn : quiet : /bin/sh /mnt/onboard/.adds/scripts/gemini.sh "explain" "{1||$}"
 chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/result.html
 
@@ -155,26 +279,17 @@ chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/resul
 
 ---
 
-## 🎮 How to Use
-
-1. Connect your Kobo to Wi-Fi.
-2. Open a book.
-3. Long-press a word or phrase to select it.
-4. Tap **🧠 Explain**, **👤 Who is this?**, or **🖼️ Visualize** in the menu.
-5. Wait a few seconds for the pop-up modal.
-6. Close the window to resume reading.
-
 ## ⚠️ Troubleshooting
 
-* **"Request Failed / Curl returned empty"**: Check your Wi-Fi connection. Kobo drops Wi-Fi to save battery; ensure the icon is active before searching.
-* **"Model not found"**: Google may have updated API names. Check `gemini.sh` and ensure `gemini-2.5-flash` is still the current model name.
-* **Stuck on Loading Screen**: The script might have crashed. Reboot the Kobo to clear the `/tmp` RAM folder.
+* **Black/Incomplete Images:** The Kobo has limited RAM. The script uses `384x512` resolution to ensure stability. If images still fail, the script will automatically switch to a Text Description fallback.
+* **Broken Image Icon:** This means the download failed or returned text (like an error message). The new script saves images to disk (`vis.png`) to solve Base64 display issues.
+* **"Unauthorized":** Check that the `CF_API_KEY` in `gemini.sh` matches the `API_KEY` variable in your Cloudflare Worker settings.
 
 ---
 
 ## 🔧 Appendix: Diagnostic Tool
 
-If the scripts ever stop working, use this tool to ask Google specifically "What models can I use?" This helps verify if your API Key is active or if model names have changed.
+If the text features stop working, use this tool to ask Google specifically "What models can I use?"
 
 ### 1. Create `diagnose.sh`
 
@@ -184,58 +299,26 @@ Create a file at `.adds/scripts/diagnose.sh` and paste this code:
 #!/bin/sh
 # Location: /mnt/onboard/.adds/scripts/diagnose.sh
 
-API_KEY="PASTE_YOUR_API_KEY_HERE"
+API_KEY="PASTE_GOOGLE_API_KEY_HERE"
 OUTPUT_HTML="/mnt/onboard/.adds/scripts/result.html"
 DEBUG_FILE="/tmp/diagnose_debug.txt"
 
-# --- SETUP CURL ---
-CURL_SOURCE="/mnt/onboard/.adds/scripts/curl"
 CURL_BIN="/tmp/curl_kobo"
-if [ ! -f "$CURL_BIN" ]; then
-    cp "$CURL_SOURCE" "$CURL_BIN"
-    chmod +x "$CURL_BIN"
-fi
+[ ! -f "$CURL_BIN" ] && cp "/mnt/onboard/.adds/scripts/curl" "$CURL_BIN" && chmod +x "$CURL_BIN"
 
-# --- CSS ---
 CSS="<style>body{font-family:'Courier',monospace;font-size:16px;padding:20px;} h2{font-family:sans-serif;border-bottom:2px solid #000;} .model{margin-bottom:10px;padding:10px;background:#eee;border-left:5px solid #000;}</style>"
 
-# --- LOADING ---
 echo "<html><head>$CSS</head><body><h2>⏳ Querying Google...</h2><p>Checking API permissions...</p></body></html>" > $OUTPUT_HTML
 
-# --- FETCH MODELS ---
-# queries the API for a list of all available models
 "$CURL_BIN" -k -s -m 20 "[https://generativelanguage.googleapis.com/v1beta/models?key=$API_KEY](https://generativelanguage.googleapis.com/v1beta/models?key=$API_KEY)" > "$DEBUG_FILE"
 
-# --- PARSE RESULTS ---
 if grep -q "\"name\":" "$DEBUG_FILE"; then
-    # Filter for 'gemini' or 'imagen' models
     MODELS_FOUND=$(grep -o '"name": "models/[^"]*' "$DEBUG_FILE" | sed 's/"name": "models\///')
-    
-    HTML_LIST=""
-    for m in $MODELS_FOUND; do
-        HTML_LIST="$HTML_LIST <div class='model'>$m</div>"
-    done
-    
-    echo "<html><head>$CSS</head><body><h2>✅ Success</h2><p>Your Key is active. Available models:</p>$HTML_LIST</body></html>" > $OUTPUT_HTML
+    HTML_LIST=""; for m in $MODELS_FOUND; do HTML_LIST="$HTML_LIST <div class='model'>$m</div>"; done
+    echo "<html><head>$CSS</head><body><h2>✅ Success</h2><p>Key active. Available models:</p>$HTML_LIST</body></html>" > $OUTPUT_HTML
 else
-    # FAILURE
     ERROR_MSG=$(cat "$DEBUG_FILE")
-    if [ -z "$ERROR_MSG" ]; then ERROR_MSG="Connection failed. Check Wi-Fi."; fi
-    echo "<html><head>$CSS</head><body><h2>⚠️ Connection Failed</h2><p>Could not reach Google.</p><pre>$ERROR_MSG</pre></body></html>" > $OUTPUT_HTML
+    echo "<html><head>$CSS</head><body><h2>⚠️ Failed</h2><pre>$ERROR_MSG</pre></body></html>" > $OUTPUT_HTML
 fi
-
-```
-
-### 2. Add to NickelMenu
-
-Add this line to your `.adds/nm/config` file to create a "Tools" button:
-
-```text
-menu_item : selection : 🛠️ Diagnostics : cmd_spawn : quiet : /bin/sh /mnt/onboard/.adds/scripts/diagnose.sh
-chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/result.html
-
-```
-
-```
 
 ```
