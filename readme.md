@@ -9,13 +9,22 @@ This project enhances a Kobo e-reader with on-demand AI intelligence. It allows 
 When installed, your Kobo file system should look like this:
 
 ```text
-.adds/
-├── nm/
-│   └── config              # NickelMenu configuration file
-└── scripts/
-    ├── curl                # Static ARM binary for networking
-    ├── gemini.sh           # Main logic script
-    └── result.html         # (Created automatically by script)
+(KOBO ROOT DIRECTORY)
+│
+├── .kobo/
+│   └── KoboRoot.tgz          <-- (Only needed once to install NickelMenu, then it disappears)
+│
+├── .adds/
+│   ├── nm/
+│   │   └── config            <-- (The text file where you added the menu_item lines)
+│   │
+│   └── scripts/
+│       ├── curl              <-- (The binary file you downloaded, NO file extension)
+│       ├── gemini.sh         <-- (The main script, code provided below)
+│       ├── diagnose.sh       <-- (The fix-it tool, code provided below)
+│       └── result.html       <-- (Generated automatically; you don't need to create this)
+│
+└── (Your Books Folder)
 ```
 
 
@@ -24,7 +33,7 @@ When installed, your Kobo file system should look like this:
 1. **Kobo E-Reader** (Any model running recent firmware).
 2. **NickelMenu** installed (v0.6.0+).
 3. **Google Gemini API Key** (Free tier from [aistudio.google.com](https://aistudio.google.com/)).
-4. **Static Curl Binary** (Included in this kit or downloaded from `static-curl` repo).
+4. **Static Curl Binary** (downloaded from `static-curl` repo).
 
 ---
 
@@ -224,32 +233,4 @@ Add this line to your `.adds/nm/config` file to create a "Tools" button:
 ```
 menu_item : selection : 🛠️ Diagnostics : cmd_spawn : quiet : /bin/sh /mnt/onboard/.adds/scripts/diagnose.sh
 chain_success : nickel_browser : modal : file:///mnt/onboard/.adds/scripts/result.html
-```
-
-```
-You now have a fully self-repairing AI system for your Kobo! 
-```
-
-
-### 📂Folder Hierarchy Verification
-
-**Plaintext**
-
-```
-(KOBO ROOT DIRECTORY)
-│
-├── .kobo/
-│   └── KoboRoot.tgz          <-- (Only needed once to install NickelMenu, then it disappears)
-│
-├── .adds/
-│   ├── nm/
-│   │   └── config            <-- (The text file where you added the menu_item lines)
-│   │
-│   └── scripts/
-│       ├── curl              <-- (The binary file you downloaded, NO file extension)
-│       ├── gemini.sh         <-- (The main script, code provided below)
-│       ├── diagnose.sh       <-- (The fix-it tool, code provided below)
-│       └── result.html       <-- (Generated automatically; you don't need to create this)
-│
-└── (Your Books Folder)
 ```
