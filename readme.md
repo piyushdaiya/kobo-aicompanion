@@ -7,6 +7,22 @@ This project turns your Kobo e-reader into a powerful AI assistant using a "Hybr
 * **Text (Definitions/Summaries):** Uses **Google Gemini 2.5** (Fast, smart, free).
 * **Images (Visualization):** Uses **Cloudflare Workers AI** (Stable Diffusion) to generate scenes.
 
+
+# AI Screenshots
+
+## **AI Companion Options**
+![screen_009.png](images/screen_009.png)
+
+
+## **Visualize**
+![screen_011.png](images/screen_011.png)
+
+## **Who is this?**
+![screen_013.png](images/screen_013.png)![screen_015.png](images/screen_015.png)
+
+## **Explain**
+![screen_018.png](images/screen_018.png)![screen_021.png](images/screen_021.png)
+
 ## 📂 Project Structure
 
 When installed, your Kobo file system should look like this:
